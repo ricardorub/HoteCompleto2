@@ -1,13 +1,16 @@
 package View;
 
+import Controller.ControllerHome; // Import ControllerHome
+import General.Admin; // Import Admin entity
 import java.awt.event.KeyEvent;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+// Remove direct SQL imports as they are no longer used here
+// import java.sql.DriverManager;
+// import java.sql.PreparedStatement;
+// import java.sql.ResultSet;
+// import java.sql.SQLException;
+// import java.sql.Statement;
+// import java.util.logging.Level;
+// import java.util.logging.Logger;
 import javax.swing.JOptionPane;
 
 /*
@@ -21,16 +24,18 @@ import javax.swing.JOptionPane;
  */
 public class PassWord extends javax.swing.JFrame {
 
+    private ControllerHome controllerHome; // Instance of ControllerHome
+    private String currentEmailForRecovery = null; // Store email after successful search
+
     /**
      * Creates new form PassWord
      */
     public PassWord() {
         initComponents();
-        txtsq.setEditable(false);
+        txtsq.setEditable(false); // Security question field should not be editable by user
+        controllerHome = new ControllerHome(); // Initialize ControllerHome
+        txtemail.requestFocus();
     }
-PreparedStatement pst;
-    Statement st=null;
-    ResultSet rs;
     
     /**
      * This method is called from within the constructor to initialize the form.
@@ -69,11 +74,11 @@ PreparedStatement pst;
 
         jLabel1.setFont(new java.awt.Font("Sitka Small", 1, 14)); // NOI18N
         jLabel1.setForeground(new java.awt.Color(255, 255, 255));
-        jLabel1.setText("Email");
+        jLabel1.setText("Email / User");
 
         jLabel2.setFont(new java.awt.Font("Sitka Small", 1, 14)); // NOI18N
         jLabel2.setForeground(new java.awt.Color(255, 255, 255));
-        jLabel2.setText("Sequrity Question");
+        jLabel2.setText("Security Question");
 
         jLabel3.setFont(new java.awt.Font("Sitka Small", 1, 14)); // NOI18N
         jLabel3.setForeground(new java.awt.Color(255, 255, 255));
@@ -81,7 +86,7 @@ PreparedStatement pst;
 
         jLabel4.setFont(new java.awt.Font("Sitka Small", 1, 14)); // NOI18N
         jLabel4.setForeground(new java.awt.Color(255, 255, 255));
-        jLabel4.setText("Set Password");
+        jLabel4.setText("Set New Password");
 
         txtpassword.setFont(new java.awt.Font("Segoe UI", 1, 14)); // NOI18N
         txtpassword.addKeyListener(new java.awt.event.KeyAdapter() {
@@ -103,6 +108,9 @@ PreparedStatement pst;
         txtemail.addKeyListener(new java.awt.event.KeyAdapter() {
             public void keyReleased(java.awt.event.KeyEvent evt) {
                 txtemailKeyReleased(evt);
+            }
+            public void keyPressed(java.awt.event.KeyEvent evt) {
+                txtemailKeyPressed(evt);
             }
         });
 
@@ -214,161 +222,115 @@ PreparedStatement pst;
     }// </editor-fold>//GEN-END:initComponents
 
     private void jButton3ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton3ActionPerformed
- new SignIn().setVisible(true);     
- 
-//dispose();// TODO add your handling code here:
+     // Navigate back to SignIn view
+     new SignIn().setVisible(true);     
+     this.dispose(); // Close current PassWord window
     }//GEN-LAST:event_jButton3ActionPerformed
 
     private void btnsearchActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnsearchActionPerformed
-        try {
-            Class.forName("com.mysql.cj.jdbc.Driver");
-            java.sql.Connection con=DriverManager.getConnection("jdbc:mysql://localhost:3306/hotel","root","Sudhir@123");
-            //st=con.createStatement(ResultSet.TYPE_SCROLL_SENSITIVE,ResultSet.CONCUR_READ_ONLY);
-            pst=con.prepareStatement("select sq from signup where email=?");
-            pst.setString(1, txtemail.getText());
-            rs=pst.executeQuery();
-            if(rs.next()){
-                txtsq.setText(rs.getString("sq"));
-                }
-            else
-                JOptionPane.showMessageDialog(this,"Email id not exist");
+        String emailOrUsername = txtemail.getText().trim();
+        if (emailOrUsername.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Please enter your Email or Username.", "Input Required", JOptionPane.WARNING_MESSAGE);
+            txtemail.requestFocus();
+            return;
+        }
+
+        Admin admin = controllerHome.recuperarAdmin(emailOrUsername);
+
+        if (admin != null) {
+            currentEmailForRecovery = admin.getEmail(); // Store email for submit action
+            txtsq.setText(admin.getSecurityQuestion());
+            txtans.setText(""); // Clear previous answer
+            txtpassword.setText(""); // Clear previous new password
+            txtans.requestFocus();
+        } else {
+            JOptionPane.showMessageDialog(this, "Email/Username not found.", "Search Failed", JOptionPane.ERROR_MESSAGE);
+            txtsq.setText("");
             txtans.setText("");
             txtpassword.setText("");
-        } catch (ClassNotFoundException | SQLException ex) {
-           // Logger.getLogger(Product.class.getName()).log(Level.SEVERE, null, ex);
+            currentEmailForRecovery = null;
         }
-        // TODO add your handling code here:
     }//GEN-LAST:event_btnsearchActionPerformed
 
+    private void performPasswordReset() {
+        if (currentEmailForRecovery == null || txtsq.getText().trim().isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Please search for your account first using your Email/Username.", "Error", JOptionPane.ERROR_MESSAGE);
+            txtemail.requestFocus();
+            return;
+        }
+
+        String answer = txtans.getText(); // No trim, answer might have leading/trailing spaces intentionally
+        String newPassword = txtpassword.getText(); // No trim, password might have spaces
+
+        if (answer.isEmpty()) { // Security answer usually shouldn't be empty
+            JOptionPane.showMessageDialog(this, "Please enter the answer to your security question.", "Input Required", JOptionPane.WARNING_MESSAGE);
+            txtans.requestFocus();
+            return;
+        }
+        if (newPassword.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "New Password cannot be empty.", "Input Required", JOptionPane.WARNING_MESSAGE);
+            txtpassword.requestFocus();
+            return;
+        }
+
+        boolean isAnswerCorrect = controllerHome.verificarRespuestaSeguridad(currentEmailForRecovery, answer);
+
+        if (isAnswerCorrect) {
+            boolean passwordUpdated = controllerHome.actualizarPassword(currentEmailForRecovery, newPassword);
+            if (passwordUpdated) {
+                JOptionPane.showMessageDialog(this, "Password has been reset successfully.\nYou can now login with your new password.", "Password Reset Success", JOptionPane.INFORMATION_MESSAGE);
+                new SignIn().setVisible(true);
+                this.dispose();
+            } else {
+                JOptionPane.showMessageDialog(this, "Failed to update password. Please try again or contact support.", "Password Reset Failed", JOptionPane.ERROR_MESSAGE);
+            }
+        } else {
+            JOptionPane.showMessageDialog(this, "Incorrect answer to the security question.", "Verification Failed", JOptionPane.ERROR_MESSAGE);
+            txtans.requestFocus();
+        }
+    }
+
     private void jButton2ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton2ActionPerformed
-    if(txtsq.getText().equals("")){
-        JOptionPane.showMessageDialog(this,"Enter Email and Search it");   
-        txtemail.requestFocus();
-    }
-    else if(txtans.getText().equals("")){
-        JOptionPane.showMessageDialog(this,"Enter vaild Answer");
-        txtans.requestFocus();
-    }
-    else if(txtpassword.getText().equals("")){
-        JOptionPane.showMessageDialog(this," Password Field Not Empity");
-        txtpassword.requestFocus();
-    }
-    else{
-        try {
-        Class.forName("com.mysql.cj.jdbc.Driver");
-        java.sql.Connection conn=DriverManager.getConnection("jdbc:mysql://localhost:3306/hotel","root","Sudhir@123");
-        //st=conn.createStatement(ResultSet.TYPE_SCROLL_SENSITIVE,ResultSet.CONCUR_READ_ONLY);
-        pst=conn.prepareStatement("select * from signup where answer=? and email=?");
-        pst.setString(1, txtans.getText());
-        pst.setString(2, txtemail.getText());
-        rs=pst.executeQuery();
-        if(rs.next()){
-            try {
-            Class.forName("com.mysql.cj.jdbc.Driver");
-            java.sql.Connection con=DriverManager.getConnection("jdbc:mysql://localhost:3306/hotel","root","Sudhir@123");
-            pst=con.prepareStatement("update signup set password=? where email=?");
-            pst.setString(1, txtpassword.getText());
-            pst.setString(2, txtemail.getText());
-            pst.executeUpdate();
-            JOptionPane.showMessageDialog(this, "Password Reset\nLogin Now","Success",JOptionPane.INFORMATION_MESSAGE);
-            new SignIn().setVisible(true); 
-        } catch (ClassNotFoundException | SQLException ex) {
-            Logger.getLogger(PassWord.class.getName()).log(Level.SEVERE, null, ex);
-        }
-        }
-        else{
-            JOptionPane.showMessageDialog(this, "Wrong Answer Entery","Wrong",JOptionPane.WARNING_MESSAGE);
-            txtpassword.setText("");
-            txtans.setText("");
-        }
-    }catch(Exception e){
-        
-    }
-        
-    }
+        performPasswordReset();
     }//GEN-LAST:event_jButton2ActionPerformed
 
     private void txtansKeyPressed(java.awt.event.KeyEvent evt) {//GEN-FIRST:event_txtansKeyPressed
-if(evt.getKeyCode()==KeyEvent.VK_ENTER) 
-    txtpassword.requestFocus();// TODO add your handling code here:
+    if(evt.getKeyCode()==KeyEvent.VK_ENTER) {
+        txtpassword.requestFocus();
+    }
     }//GEN-LAST:event_txtansKeyPressed
 
     private void txtpasswordKeyPressed(java.awt.event.KeyEvent evt) {//GEN-FIRST:event_txtpasswordKeyPressed
-if(evt.getKeyCode()==KeyEvent.VK_ENTER){
-    if(txtsq.getText().equals("")){
-        JOptionPane.showMessageDialog(this,"Enter Email and Search it");   
-        txtemail.requestFocus();
+    if(evt.getKeyCode()==KeyEvent.VK_ENTER){
+        performPasswordReset();
     }
-    else if(txtsq.getText().equals("")){
-        JOptionPane.showMessageDialog(this,"Enter vaild Answer");
-        txtans.requestFocus();
-    }
-    else if(txtpassword.getText().equals("")){
-        JOptionPane.showMessageDialog(this,"set Password Field Not Empity");
-        txtpassword.requestFocus();
-    }
-    else{
-        try {
-        Class.forName("com.mysql.cj.jdbc.Driver");
-        java.sql.Connection conn=DriverManager.getConnection("jdbc:mysql://localhost:3306/hotel","root","Sudhir@123");
-        st=conn.createStatement(ResultSet.TYPE_SCROLL_SENSITIVE,ResultSet.CONCUR_READ_ONLY);
-        pst=conn.prepareStatement("select * from signup where answer=?");
-        pst.setString(1, txtans.getText());
-        rs=pst.executeQuery();
-        if(rs.next()){
-           //txtsq.setText(rs.getString("answer"));
-           //}
-            try {
-            Class.forName("com.mysql.cj.jdbc.Driver");
-            java.sql.Connection con=DriverManager.getConnection("jdbc:mysql://localhost:3306/hotel","root","Sudhir@123");
-            pst=con.prepareStatement("update signup set password=? where email=?");
-            pst.setString(1, txtpassword.getText());
-            pst.setString(2, txtemail.getText());
-            pst.executeUpdate();
-            JOptionPane.showMessageDialog(this, "Password Reset\nLogin now","Success",JOptionPane.INFORMATION_MESSAGE);
-            new SignIn().setVisible(true); 
-
-        } catch (ClassNotFoundException | SQLException ex) {
-            Logger.getLogger(PassWord.class.getName()).log(Level.SEVERE, null, ex);
-        }
-        }
-        else{
-            JOptionPane.showMessageDialog(this, "Wrong Answer Entery","Wrong",JOptionPane.WARNING_MESSAGE);
-            txtpassword.setText("");
-            txtans.setText("");
-            txtans.requestFocus();
-        }
-    }catch(Exception e){
-        
-    }
-        
-    }
-}// TODO add your handling code here:
     }//GEN-LAST:event_txtpasswordKeyPressed
 
     private void txtemailKeyReleased(java.awt.event.KeyEvent evt) {//GEN-FIRST:event_txtemailKeyReleased
-txtemail.setText(txtemail.getText().toLowerCase()); 
+    // Basic email format validation feedback
+     String emailText = txtemail.getText().toLowerCase();
+     // txtemail.setText(emailText); // No, let user type mixed case if they want, controller handles it
 
-     int a=txtemail.getText().indexOf('@');
-     int b=txtemail.getText().length();
-     
-      if(a == -1){
-          lblemail.setText("Invalied Email id");
-      }
-      else if (b>a+1){
-      String s=txtemail.getText();
-      String[] splitString = s.split("@");
-      if(splitString[1].equalsIgnoreCase("gmail.com")){
-      lblemail.setText("");
-      txtpassword.requestFocus();
-      }
-      else
-         lblemail.setText("Invalied Email id");
-      }  
-      if(txtemail.getText().equals(""))
+     if (!emailText.isEmpty() && emailText.contains("@")) {
+         if (emailText.matches("^[\\w-\\.]+@([\\w-]+\\.)+[\\w-]{2,4}$")) {
+             lblemail.setText(""); 
+         } else {
+             lblemail.setText("Invalid Email Format");
+         }
+     } else if (!emailText.isEmpty() && !emailText.contains("@") && !Character.isDigit(emailText.charAt(0))) {
+         lblemail.setText(""); // Assuming it's a username
+     } else if (emailText.isEmpty()){
           lblemail.setText("");
-
+     } else if (!emailText.isEmpty()){ // If not empty, not username-like, and no @
+         lblemail.setText("Invalid Email/Username");
+     }
     }//GEN-LAST:event_txtemailKeyReleased
+
+    private void txtemailKeyPressed(java.awt.event.KeyEvent evt) {//GEN-FIRST:event_txtemailKeyPressed
+        if(evt.getKeyCode()==KeyEvent.VK_ENTER) {
+            btnsearchActionPerformed(null); // Trigger search on enter
+        }
+    }//GEN-LAST:event_txtemailKeyPressed
 
     /**
      * @param args the command line arguments
